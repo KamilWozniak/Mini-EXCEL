@@ -1,5 +1,6 @@
 <template>
   <div class="app">
+<!--    {{valuesArray}}-->
     <div class="excel-container">
       <div class="excel-container__main-form">
         <form @submit.prevent="">
@@ -10,7 +11,8 @@
           <button class="main-form__btn">policz</button>
         </form>
       </div>
-      <div class="excel-container__main-grid">
+      <div class="excel-container__main-grid"
+           :style="this.gridStyles">
         <div class="main-grid__empty-cell"/>
         <div v-for="number in gridColumns"
              :key="`letter_${number}`"
@@ -33,7 +35,9 @@
 
           <input type="text"
                  class="main-grid__cell__input"
-                 v-model="valuesArray[cell.row - 1][cell.column -1]">
+                 :key="`r_${cell.row}_c_${cell.column}_input`"
+                 v-model="valuesArray[cell.row - 1][cell.column - 1].value">
+
         </div>
       </div>
     </div>
@@ -41,6 +45,7 @@
 </template>
 
 <script>
+import styles from '../assets/styles/main.scss';
 
 export default {
   name: 'excel-app',
@@ -64,9 +69,28 @@ export default {
       }
       return cells;
     },
+    gridStyles() {
+      return {
+        gridTemplateColumns: `${styles.rowIndexWidth} repeat(${this.gridColumns}, ${styles.cellWidth})`,
+        gridTemplateRows: `${styles.columnLetterHeight} repeat(${this.gridRows}, ${styles.cellHeight})`,
+      };
+    },
+  },
+  methods: {
+    createEmptyValuesArray() {
+      for (let i = 0; i < this.gridRows; i += 1) {
+        const oneRow = [];
+        for (let j = 0; j < this.gridColumns; j += 1) {
+          oneRow.push({ value: '', insertedQuery: '' });
+          if (j === this.gridColumns - 1) {
+            this.valuesArray.push(oneRow);
+          }
+        }
+      }
+    },
   },
   created() {
-    this.valuesArray = Array(this.gridRows).fill('').map(() => Array(this.gridColumns).fill(''));
+    this.createEmptyValuesArray();
   },
 };
 </script>
@@ -132,8 +156,6 @@ export default {
       height: 100%;
       background-color: $grey-400;
       display: grid;
-      grid-template-columns: 3rem repeat(10, $cell-width);
-      grid-template-rows: 3rem repeat(10, $cell-height);
       grid-gap: 3px;
 
       .main-grid {
