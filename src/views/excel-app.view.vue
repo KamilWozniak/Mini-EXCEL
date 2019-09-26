@@ -1,18 +1,19 @@
 <template>
   <div class="app">
-    <!--    {{valuesArray}}-->
     <div class="excel-container">
       <div class="excel-container__main-form">
-        <form @submit.prevent="">
+        <form @submit.prevent="handleMainInputSubmit">
           <input class="main-form__input"
                  type="text"
-                 v-model="mainInputQuery">
+                 :value="focusedCellQuery"
+                 @input="handleMainInput($event.target.value)">
 
           <button class="main-form__btn">policz</button>
         </form>
       </div>
       <div class="excel-container__main-grid"
            :style="this.gridStyles">
+
         <div class="main-grid__empty-cell" />
         <div v-for="number in gridColumns"
              :key="`letter_${number}`"
@@ -34,13 +35,21 @@
              class="main-grid__cell">
 
           <form class="main-grid__cell__form"
-                @submit.prevent="parseCellQuery(cell.row - 1, cell.column - 1)">
+                @submit.prevent="handleSingleCellFormSubmit(
+                cell.row - 1,
+                cell.column - 1,
+                 $event.target)">
 
             <input type="text"
                    class="main-grid__cell__input"
-                   :key="`r_${cell.row}_c_${cell.column}_input`"
-                   v-model="valuesArray[cell.row - 1][cell.column - 1].insertedQuery"
-                   @focus="displayCellQuery(cell.row - 1, cell.column - 1)">
+                   :ref="`row_${cell.row - 1}_col_${cell.column - 1}`"
+                   :key="cell.key"
+                   @focus="handleCellFocus(cell.row - 1, cell.column - 1)"
+                   @blur="handleCellBlur(cell.row - 1, cell.column - 1)"
+                   @input="handleCellInput(cell.row - 1, cell.column - 1, $event.target.value)"
+                   :value="decideIfDisplayQueryOrValue(cell.row - 1, cell.column - 1)"
+                   :class="checkIfFocused(cell.row - 1, cell.column - 1)
+                      ? 'main-grid__cell--focused' : ''" >
 
           </form>
         </div>
@@ -59,7 +68,10 @@ export default {
     return {
       gridColumns: 10,
       gridRows: 10,
-      mainInputQuery: '',
+      currentlyFocusedCell: {
+        row: 0,
+        column: 0,
+      },
       letters: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U', 'W'],
       valuesArray: [],
       handledOperations: ['SUM', 'MUL'],
@@ -84,6 +96,10 @@ export default {
         gridTemplateRows: `${styles.columnLetterHeight} repeat(${this.gridRows}, ${styles.cellHeight})`,
       };
     },
+    focusedCellQuery() {
+      return this.valuesArray[this.currentlyFocusedCell.row][this.currentlyFocusedCell.column]
+        .insertedQuery;
+    },
   },
   methods: {
     createEmptyValuesArray() {
@@ -93,6 +109,8 @@ export default {
           oneRow.push({
             value: '',
             insertedQuery: '',
+            isFocused: false,
+            key: `row_${i}_col_${j}`,
           });
           if (j === this.gridColumns - 1) {
             this.valuesArray.push(oneRow);
@@ -100,10 +118,15 @@ export default {
         }
       }
     },
+    decideIfDisplayQueryOrValue(row, col) {
+      if (this.valuesArray[row][col].isFocused) {
+        return this.valuesArray[row][col].insertedQuery;
+      }
+      return this.valuesArray[row][col].value;
+    },
     summate(operands) {
       let total = 0;
       const operandsArray = [...operands];
-      console.log('adding');
       for (let i = 0; i < operandsArray.length; i += 1) {
         total += parseFloat(operandsArray[i]);
       }
@@ -112,52 +135,23 @@ export default {
     multiply(operands) {
       let total = 1;
       const operandsArray = [...operands];
-      console.log('multiplying');
       for (let i = 0; i < operandsArray.length; i += 1) {
         total *= parseFloat(operandsArray[i]);
       }
       return total;
     },
-    // checkIfSimpleOperands(operandsString) {
-    //   let isSimple = true;
-    //   this.handledOperations.forEach((operation) => {
-    //     if (operandsString.includes(operation)) {
-    //       isSimple = false;
-    //     }
-    //   });
-    //   return isSimple;
-    // },
-    // separateComplexOperands(complexOperandsString) {
-    //   const complexOperandsArray = [];
-    //
-    //   return complexOperandsArray;
-    // },
-    // simplifyOperands(operandsString) {
-    //   let simplifiedOperands = [];
-    //   if (this.checkIfSimpleOperands(operandsString)) {
-    //     simplifiedOperands = operandsString.split(',');
-    //     return simplifiedOperands;
-    //   } else {
-    //     console.log('not that simple');
-    //
-    //     // check if operands of that complex operation are simple
-    //
-    //
-    //     // check what kind of operations need to be done
-    //     // define operands for this operation
-    //     // check if operands are simple
-    //     // if yes -> make operation and return value
-    //     // if not -> simplify operands
-    //
-    //   }
-    //   // check if simple operands DONE
-    //   // if yes -> return simplified operands DONE
-    //   // if not -> simplify operands somehow
-    //   // check if simple operands
-    //   // if yes -> return simplified operands
-    //   // if not -> recursively run simplifyOperands()
-    //   return simplifiedOperands;
-    // },
+    checkIfStringIsDigit(potentialDigit) {
+      let isDigit = true;
+      for (let i = 0; i < potentialDigit.length; i += 1) {
+        if (potentialDigit.charCodeAt(i) < 46
+            || potentialDigit.charCodeAt(i) > 57
+            || potentialDigit.charCodeAt(i) === 47) {
+          isDigit = false;
+          break;
+        }
+      }
+      return isDigit;
+    },
     extractRowAndColFromCellIndex(cellIndex) {
       const cellCoordinates = {
         row: 0,
@@ -198,7 +192,9 @@ export default {
     parseOperands(operands) {
       const newOperands = [];
 
-      operands.forEach((operand) => {
+      operands.forEach((untrimmedOperand) => {
+        const operand = untrimmedOperand.trim();
+
         if (operand.includes(':')) {
           const rangeOperands = operand.split(':');
           rangeOperands[0] = rangeOperands[0].trim();
@@ -217,8 +213,13 @@ export default {
               newOperands.push(this.valuesArray[startRange.row][i].value);
             }
           }
-        } else {
+          return;
+        }
+        if (this.checkIfStringIsDigit(operand)) {
           newOperands.push(parseFloat(operand));
+        } else {
+          const cellOfInterest = this.extractRowAndColFromCellIndex(operand);
+          newOperands.push(this.valuesArray[cellOfInterest.row][cellOfInterest.column].value);
         }
       });
       return newOperands;
@@ -229,27 +230,16 @@ export default {
 
       if (cellQuery[0] === '=') {
         const operation = cellQuery.slice(1, 4);
-        // const operandsString = cellQuery.slice(5, -1);
         const operands = this.parseOperands(cellQuery.slice(5, -1)
           .split(','));
-
-        // if (this.checkIfSimpleOperands(operandsString)) {
-        //   operands = operandsString.split(',');
-        // } else {
-        //   // operands = this.simplifyOperands(operandsString);
-        //   // console.log('not that simple');
-        //   // console.log(operandsString);
-        // }
 
         switch (operation) {
           case 'SUM': {
             cell.value = this.summate(operands);
-            console.log('cell: ', cell);
             break;
           }
           case 'MUL': {
             cell.value = this.multiply(operands);
-            console.log('cell: ', cell);
             break;
           }
           default: {
@@ -260,8 +250,53 @@ export default {
         cell.value = cellQuery;
       }
     },
-    displayCellQuery(row, col) {
-      this.mainInputQuery = this.valuesArray[row][col].insertedQuery;
+    handleCellFocus(row, col) {
+      this.valuesArray[row][col].isFocused = true;
+      this.currentlyFocusedCell.column = col;
+      this.currentlyFocusedCell.row = row;
+      this.updateSpreadsheet();
+    },
+    handleCellBlur(row, col) {
+      this.valuesArray[row][col].isFocused = false;
+      this.updateSpreadsheet();
+    },
+    handleCellInput(row, col, value) {
+      this.valuesArray[row][col].insertedQuery = value;
+    },
+    handleMainInput(value) {
+      this.valuesArray[this.currentlyFocusedCell.row][this.currentlyFocusedCell.column]
+        .insertedQuery = value;
+    },
+    handleMainInputSubmit() {
+      this.updateSpreadsheet();
+      if (this.currentlyFocusedCell.row < (this.gridRows - 1)) {
+        this.currentlyFocusedCell.row += 1;
+      }
+    },
+    checkIfFocused(row, col) {
+      return row === this.currentlyFocusedCell.row && col === this.currentlyFocusedCell.column;
+    },
+    recalculateSpreadsheet() {
+      for (let i = 0; i < this.gridRows; i += 1) {
+        for (let j = 0; j < this.gridColumns; j += 1) {
+          this.parseCellQuery(i, j);
+        }
+      }
+    },
+    handleSingleCellFormSubmit(row, col, target) {
+      this.valuesArray[row][col].isFocused = false;
+      this.updateSpreadsheet();
+      if (this.currentlyFocusedCell.row < (this.gridRows - 1)) {
+        this.currentlyFocusedCell.row += 1;
+        target.childNodes[0].blur();
+        this.valuesArray[row + 1][col].isFocused = true;
+        const ref = `row_${row + 1}_col_${col}`;
+        this.$refs[ref][0].focus();
+      }
+    },
+    updateSpreadsheet() {
+      this.recalculateSpreadsheet(); // update first degree operation values
+      this.recalculateSpreadsheet(); // update higher order degree operation values
     },
   },
   created() {
@@ -363,6 +398,12 @@ export default {
         &__cell {
           background-color: lighten($cell-color, 10);
 
+          &--focused {
+            background-color: $grey-200;
+            outline: none;
+            border: 2px solid $black;
+          }
+
           &__input {
             width: 100%;
             height: 100%;
@@ -377,6 +418,5 @@ export default {
     }
   }
 }
-
 
 </style>
