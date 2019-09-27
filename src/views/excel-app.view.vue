@@ -32,7 +32,10 @@
         </div>
         <div v-for="cell in gridCells"
              :key="`r_${cell.row}_c_${cell.column}`"
-             class="main-grid__cell">
+             :ref="`row_${cell.row - 1}_col_${cell.column - 1}_divWrapper`"
+             class="main-grid__cell"
+             :style="getCellWrapperStyles(cell.row - 1, cell.column - 1)">
+
 
           <form class="main-grid__cell__form"
                 @submit.prevent="handleSingleCellFormSubmit(
@@ -46,12 +49,13 @@
                    class="main-grid__cell__input"
                    :ref="`row_${cell.row - 1}_col_${cell.column - 1}`"
                    :key="cell.key"
+                   :readonly="decideIfReadOnly(cell.row - 1, cell.column - 1)"
                    @focus="handleCellFocus(cell.row - 1, cell.column - 1)"
                    @blur="handleCellBlur(cell.row - 1, cell.column - 1)"
                    @input="handleCellInput(cell.row - 1, cell.column - 1, $event.target.value)"
                    :value="decideIfDisplayQueryOrValue(cell.row - 1, cell.column - 1)"
                    :class="checkIfFocused(cell.row - 1, cell.column - 1)
-                      ? 'main-grid__cell--focused' : ''" >
+                      ? 'main-grid__cell--focused' : '' ">
 
           </form>
         </div>
@@ -121,6 +125,23 @@ export default {
           }
         }
       }
+    },
+
+    getCellWrapperStyles(row, col) {
+      if (this.decideIfExpandCell(row, col)) {
+        const ref = `row_${row}_col_${col}`;
+        const element = this.$refs[ref][0];
+        return {
+          zIndex: 10,
+          width: `${this.measureTextWidth(element.value)}px`,
+        };
+      }
+      return '';
+    },
+
+
+    decideIfReadOnly(row, col) {
+      return this.checkIfCellQueryIsFunction(row, col) && !this.isCellInQueryMode;
     },
 
     decideIfDisplayQueryOrValue(row, col) {
@@ -225,7 +246,7 @@ export default {
       const newOperands = [];
 
       operands.forEach((untrimmedOperand) => {
-        const operand = untrimmedOperand.trim();
+        const operand = untrimmedOperand.trim().toUpperCase();
 
         if (operand.includes(':')) {
           const rangeOperands = operand.split(':');
@@ -321,7 +342,9 @@ export default {
     },
 
     checkIfCellQueryIsFunction(row, col) {
-      return this.valuesArray[row][col].insertedQuery[0] === '=';
+      const cell = this.valuesArray[row][col];
+      const lastChar = cell.insertedQuery[cell.insertedQuery.length - 1];
+      return cell.insertedQuery[0] === '=' && lastChar === ')';
     },
 
     handleCellFocus(row, col) {
@@ -337,6 +360,7 @@ export default {
     handleCellDoubleClick(row, col) {
       this.isCellInQueryMode = true;
       this.valuesArray[row][col].isFocused = true;
+      this.$forceUpdate();
     },
 
     handleCellBlur(row, col) {
@@ -347,6 +371,30 @@ export default {
 
     handleCellInput(row, col, value) {
       this.valuesArray[row][col].insertedQuery = value;
+    },
+
+    checkIfCellOverflow(row, col) {
+      const refInput = `row_${row}_col_${col}`;
+      if (this.$refs[refInput] !== undefined) {
+        const inputElement = this.$refs[refInput][0];
+        if (this.measureTextWidth(inputElement.value) > (96)
+          || this.measureTextWidth(inputElement.insertedQuery) > (96)) {
+          console.log('powyzej!');
+          return true;
+        }
+      }
+      return false;
+    },
+
+    decideIfExpandCell(row, col) {
+      return !!(this.checkIfCellOverflow(row, col) && this.checkIfFocused(row, col));
+    },
+
+    measureTextWidth(text) {
+      const c = document.createElement('canvas');
+      const ctx = c.getContext('2d');
+      ctx.font = 'normal 14pt lato';
+      return Math.ceil(ctx.measureText(text).width);
     },
 
     handleMainInput(value) {
@@ -505,6 +553,12 @@ export default {
       }
     }
   }
+}
+
+.wrapper-of {
+  border: 2px red solid;
+  width: 200px;
+  z-index: 10;
 }
 
 </style>
