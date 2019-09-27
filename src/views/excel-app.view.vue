@@ -14,7 +14,7 @@
       <div class="excel-container__main-grid"
            :style="this.gridStyles">
 
-        <div class="main-grid__empty-cell" />
+        <div class="main-grid__empty-cell"></div>
         <div v-for="number in gridColumns"
              :key="`letter_${number}`"
              class="main-grid__column-letter__wrapper">
@@ -38,7 +38,9 @@
                 @submit.prevent="handleSingleCellFormSubmit(
                 cell.row - 1,
                 cell.column - 1,
-                 $event.target)">
+                $event.target)"
+                @dblclick="handleCellDoubleClick(cell.row - 1,
+                cell.column - 1)">
 
             <input type="text"
                    class="main-grid__cell__input"
@@ -63,7 +65,6 @@ import styles from '../assets/styles/main.scss';
 
 export default {
   name: 'excel-app',
-  components: {},
   data() {
     return {
       gridColumns: 10,
@@ -72,6 +73,7 @@ export default {
         row: 0,
         column: 0,
       },
+      isCellInQueryMode: false,
       letters: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U', 'W'],
       valuesArray: [],
       handledOperations: ['SUM', 'MUL'],
@@ -90,12 +92,14 @@ export default {
       }
       return cells;
     },
+
     gridStyles() {
       return {
         gridTemplateColumns: `${styles.rowIndexWidth} repeat(${this.gridColumns}, ${styles.cellWidth})`,
         gridTemplateRows: `${styles.columnLetterHeight} repeat(${this.gridRows}, ${styles.cellHeight})`,
       };
     },
+
     focusedCellQuery() {
       return this.valuesArray[this.currentlyFocusedCell.row][this.currentlyFocusedCell.column]
         .insertedQuery;
@@ -118,32 +122,44 @@ export default {
         }
       }
     },
+
     decideIfDisplayQueryOrValue(row, col) {
-      if (this.valuesArray[row][col].isFocused) {
+      if (this.valuesArray[row][col].isFocused && this.isCellInQueryMode) {
         return this.valuesArray[row][col].insertedQuery;
       }
       return this.valuesArray[row][col].value;
     },
+
+    checkIfFocused(row, col) {
+      return row === this.currentlyFocusedCell.row && col === this.currentlyFocusedCell.column;
+    },
+
     summate(operands) {
+      if (operands.length === 1) {
+        return 'Err';
+      }
       let total = 0;
-      const operandsArray = [...operands];
-      for (let i = 0; i < operandsArray.length; i += 1) {
-        total += parseFloat(operandsArray[i]);
+      for (let i = 0; i < operands.length; i += 1) {
+        total += parseFloat(operands[i]);
       }
       return total;
     },
+
     multiply(operands) {
+      if (operands.length === 1) {
+        return 'Err';
+      }
       let total = 1;
-      const operandsArray = [...operands];
-      for (let i = 0; i < operandsArray.length; i += 1) {
-        total *= parseFloat(operandsArray[i]);
+      for (let i = 0; i < operands.length; i += 1) {
+        total *= parseFloat(operands[i]);
       }
       return total;
     },
+
     checkIfStringIsDigit(potentialDigit) {
       let isDigit = true;
       for (let i = 0; i < potentialDigit.length; i += 1) {
-        if (potentialDigit.charCodeAt(i) < 46
+        if (potentialDigit.charCodeAt(i) < 45
             || potentialDigit.charCodeAt(i) > 57
             || potentialDigit.charCodeAt(i) === 47) {
           isDigit = false;
@@ -152,6 +168,7 @@ export default {
       }
       return isDigit;
     },
+
     extractRowAndColFromCellIndex(cellIndex) {
       const cellCoordinates = {
         row: 0,
@@ -180,6 +197,7 @@ export default {
       cellCoordinates.column = colNumber;
       return cellCoordinates;
     },
+
     defineRangeDirection(start, end) {
       if (start.column === end.column) {
         return 'VERTICAL';
@@ -189,6 +207,20 @@ export default {
       }
       return 'UNSPECIFIED';
     },
+
+    checkIfCellIndex(data) {
+      let isCellIndex = false;
+      for (let i = 0; i < this.gridRows; i += 1) {
+        for (let j = 0; j < this.gridColumns; j += 1) {
+          if (data === `${this.letters[j]}${i}`) {
+            isCellIndex = true;
+            break;
+          }
+        }
+      }
+      return isCellIndex;
+    },
+
     parseOperands(operands) {
       const newOperands = [];
 
@@ -199,31 +231,64 @@ export default {
           const rangeOperands = operand.split(':');
           rangeOperands[0] = rangeOperands[0].trim();
           rangeOperands[1] = rangeOperands[1].trim();
+
+          if (!this.checkIfCellIndex(rangeOperands[0])
+              || !this.checkIfCellIndex(rangeOperands[1])) {
+            newOperands.unshift(null);
+            return;
+          }
+
           const startRange = this.extractRowAndColFromCellIndex(rangeOperands[0]);
           const endRange = this.extractRowAndColFromCellIndex(rangeOperands[1]);
           const direction = this.defineRangeDirection(startRange, endRange);
 
-          if (direction === 'VERTICAL') {
+          if (direction === 'VERTICAL') { // TODO: to separate function
+            if (startRange.row > endRange.row) {
+              [startRange.row, endRange.row] = [endRange.row, startRange.row];
+            }
             for (let i = startRange.row; i <= endRange.row; i += 1) {
-              newOperands.push(this.valuesArray[i][startRange.column].value);
+              if (this.checkIfStringIsDigit(this.valuesArray[i][startRange.column].value)
+                && this.valuesArray[i][startRange.column].value !== '') {
+                newOperands.push(this.valuesArray[i][startRange.column].value);
+              } else {
+                newOperands.unshift(null);
+              }
             }
           }
           if (direction === 'HORIZONTAL') {
+            if (startRange.column > endRange.column) {
+              [startRange.column, endRange.column] = [endRange.column, startRange.column];
+            }
             for (let i = startRange.column; i <= endRange.column; i += 1) {
-              newOperands.push(this.valuesArray[startRange.row][i].value);
+              if (this.checkIfStringIsDigit(this.valuesArray[startRange.row][i].value)
+                && this.valuesArray[startRange.row][i].value !== '') { // to separate function
+                newOperands.push(this.valuesArray[startRange.row][i].value);
+              } else {
+                console.log('test');
+                newOperands.unshift(null);
+              }
             }
           }
           return;
         }
-        if (this.checkIfStringIsDigit(operand)) {
+        if (this.checkIfStringIsDigit(operand) && operand !== '') {
           newOperands.push(parseFloat(operand));
-        } else {
+        } else if (this.checkIfCellIndex(operand)) {
           const cellOfInterest = this.extractRowAndColFromCellIndex(operand);
-          newOperands.push(this.valuesArray[cellOfInterest.row][cellOfInterest.column].value);
+          const cellRow = cellOfInterest.row;
+          const cellCol = cellOfInterest.column;
+          if (this.checkIfStringIsDigit(this.valuesArray[cellRow][cellCol].value) && this.valuesArray[cellRow][cellCol].value !== '') {
+            newOperands.push(this.valuesArray[cellRow][cellCol].value);
+          } else {
+            newOperands.unshift(null);
+          }
+        } else {
+          newOperands.unshift(null);
         }
       });
       return newOperands;
     },
+
     parseCellQuery(row, col) {
       const cell = this.valuesArray[row][col];
       const cellQuery = cell.insertedQuery;
@@ -233,6 +298,10 @@ export default {
         const operands = this.parseOperands(cellQuery.slice(5, -1)
           .split(','));
 
+        if (operands[0] === null) {
+          cell.value = 'Err';
+          return;
+        }
         switch (operation) {
           case 'SUM': {
             cell.value = this.summate(operands);
@@ -243,39 +312,56 @@ export default {
             break;
           }
           default: {
-            console.log('unknown operation!');
+            cell.value = 'Err';
           }
         }
       } else {
         cell.value = cellQuery;
       }
     },
+
+    checkIfCellQueryIsFunction(row, col) {
+      return this.valuesArray[row][col].insertedQuery[0] === '=';
+    },
+
     handleCellFocus(row, col) {
+      if (this.valuesArray[row][col].value === '' || !this.checkIfCellQueryIsFunction(row, col)) {
+        this.isCellInQueryMode = true;
+      }
       this.valuesArray[row][col].isFocused = true;
       this.currentlyFocusedCell.column = col;
       this.currentlyFocusedCell.row = row;
       this.updateSpreadsheet();
     },
+
+    handleCellDoubleClick(row, col) {
+      this.isCellInQueryMode = true;
+      this.valuesArray[row][col].isFocused = true;
+    },
+
     handleCellBlur(row, col) {
       this.valuesArray[row][col].isFocused = false;
+      this.isCellInQueryMode = false;
       this.updateSpreadsheet();
     },
+
     handleCellInput(row, col, value) {
       this.valuesArray[row][col].insertedQuery = value;
     },
+
     handleMainInput(value) {
       this.valuesArray[this.currentlyFocusedCell.row][this.currentlyFocusedCell.column]
         .insertedQuery = value;
     },
+
     handleMainInputSubmit() {
       this.updateSpreadsheet();
       if (this.currentlyFocusedCell.row < (this.gridRows - 1)) {
         this.currentlyFocusedCell.row += 1;
       }
     },
-    checkIfFocused(row, col) {
-      return row === this.currentlyFocusedCell.row && col === this.currentlyFocusedCell.column;
-    },
+
+
     recalculateSpreadsheet() {
       for (let i = 0; i < this.gridRows; i += 1) {
         for (let j = 0; j < this.gridColumns; j += 1) {
@@ -283,6 +369,7 @@ export default {
         }
       }
     },
+
     handleSingleCellFormSubmit(row, col, target) {
       this.valuesArray[row][col].isFocused = false;
       this.updateSpreadsheet();
@@ -294,6 +381,7 @@ export default {
         this.$refs[ref][0].focus();
       }
     },
+
     updateSpreadsheet() {
       this.recalculateSpreadsheet(); // update first degree operation values
       this.recalculateSpreadsheet(); // update higher order degree operation values
