@@ -129,12 +129,18 @@ export default {
 
     getCellWrapperStyles(row, col) {
       if (this.decideIfExpandCell(row, col)) {
-        const ref = `row_${row}_col_${col}`;
-        const element = this.$refs[ref][0];
-        return {
-          zIndex: 10,
-          width: `${this.measureTextWidth(element.value)}px`,
-        };
+        const cell = this.valuesArray[row][col];
+        if (this.isCellInQueryMode && this.checkIfCellQueryOverflow(row, col)) {
+          return {
+            zIndex: 10,
+            width: `${this.measureTextWidth(cell.insertedQuery)}px`,
+          };
+        } if (this.checkIfCellValueOverflow(row, col)) {
+          return {
+            zIndex: 10,
+            width: `${this.measureTextWidth(cell.value)}px`,
+          };
+        }
       }
       return '';
     },
@@ -231,7 +237,7 @@ export default {
 
     checkIfCellIndex(data) {
       let isCellIndex = false;
-      for (let i = 0; i < this.gridRows; i += 1) {
+      for (let i = 1; i <= this.gridRows; i += 1) {
         for (let j = 0; j < this.gridColumns; j += 1) {
           if (data === `${this.letters[j]}${i}`) {
             isCellIndex = true;
@@ -252,6 +258,7 @@ export default {
           const rangeOperands = operand.split(':');
           rangeOperands[0] = rangeOperands[0].trim();
           rangeOperands[1] = rangeOperands[1].trim();
+
 
           if (!this.checkIfCellIndex(rangeOperands[0])
               || !this.checkIfCellIndex(rangeOperands[1])) {
@@ -285,7 +292,6 @@ export default {
                 && this.valuesArray[startRange.row][i].value !== '') { // to separate function
                 newOperands.push(this.valuesArray[startRange.row][i].value);
               } else {
-                console.log('test');
                 newOperands.unshift(null);
               }
             }
@@ -298,7 +304,8 @@ export default {
           const cellOfInterest = this.extractRowAndColFromCellIndex(operand);
           const cellRow = cellOfInterest.row;
           const cellCol = cellOfInterest.column;
-          if (this.checkIfStringIsDigit(this.valuesArray[cellRow][cellCol].value) && this.valuesArray[cellRow][cellCol].value !== '') {
+          if (this.checkIfStringIsDigit(this.valuesArray[cellRow][cellCol].value)
+            && this.valuesArray[cellRow][cellCol].value !== '') {
             newOperands.push(this.valuesArray[cellRow][cellCol].value);
           } else {
             newOperands.unshift(null);
@@ -314,7 +321,7 @@ export default {
       const cell = this.valuesArray[row][col];
       const cellQuery = cell.insertedQuery;
 
-      if (cellQuery[0] === '=') {
+      if (this.checkIfCellQueryIsFunction(row, col)) {
         const operation = cellQuery.slice(1, 4);
         const operands = this.parseOperands(cellQuery.slice(5, -1)
           .split(','));
@@ -344,11 +351,13 @@ export default {
     checkIfCellQueryIsFunction(row, col) {
       const cell = this.valuesArray[row][col];
       const lastChar = cell.insertedQuery[cell.insertedQuery.length - 1];
-      return cell.insertedQuery[0] === '=' && lastChar === ')';
+      const fifthChar = cell.insertedQuery[4];
+      return cell.insertedQuery[0] === '=' && lastChar === ')' && fifthChar === '(';
     },
 
     handleCellFocus(row, col) {
-      if (this.valuesArray[row][col].value === '' || !this.checkIfCellQueryIsFunction(row, col)) {
+      if (this.valuesArray[row][col].value === ''
+        || !this.checkIfCellQueryIsFunction(row, col)) {
         this.isCellInQueryMode = true;
       }
       this.valuesArray[row][col].isFocused = true;
@@ -360,7 +369,6 @@ export default {
     handleCellDoubleClick(row, col) {
       this.isCellInQueryMode = true;
       this.valuesArray[row][col].isFocused = true;
-      this.$forceUpdate();
     },
 
     handleCellBlur(row, col) {
@@ -373,21 +381,20 @@ export default {
       this.valuesArray[row][col].insertedQuery = value;
     },
 
-    checkIfCellOverflow(row, col) {
-      const refInput = `row_${row}_col_${col}`;
-      if (this.$refs[refInput] !== undefined) {
-        const inputElement = this.$refs[refInput][0];
-        if (this.measureTextWidth(inputElement.value) > (96)
-          || this.measureTextWidth(inputElement.insertedQuery) > (96)) {
-          console.log('powyzej!');
-          return true;
-        }
-      }
-      return false;
+    checkIfCellQueryOverflow(row, col) {
+      const cell = this.valuesArray[row][col];
+      return this.measureTextWidth(cell.insertedQuery) > (96);
+    },
+
+    checkIfCellValueOverflow(row, col) {
+      const cell = this.valuesArray[row][col];
+      return this.measureTextWidth(cell.value) > (96);
     },
 
     decideIfExpandCell(row, col) {
-      return !!(this.checkIfCellOverflow(row, col) && this.checkIfFocused(row, col));
+      return !!((this.checkIfCellValueOverflow(row, col)
+        || this.checkIfCellQueryOverflow(row, col))
+        && this.checkIfFocused(row, col));
     },
 
     measureTextWidth(text) {
@@ -409,7 +416,6 @@ export default {
       }
     },
 
-
     recalculateSpreadsheet() {
       for (let i = 0; i < this.gridRows; i += 1) {
         for (let j = 0; j < this.gridColumns; j += 1) {
@@ -426,7 +432,11 @@ export default {
         target.childNodes[0].blur();
         this.valuesArray[row + 1][col].isFocused = true;
         const ref = `row_${row + 1}_col_${col}`;
-        this.$refs[ref][0].focus();
+        const element = this.$refs[ref][0];
+        element.focus();
+        const clickEvent = document.createEvent('MouseEvents');
+        clickEvent.initEvent('dblclick', true, true);
+        element.dispatchEvent(clickEvent);
       }
     },
 
@@ -502,11 +512,12 @@ export default {
       height: 100%;
       background-color: $grey-400;
       display: grid;
-      grid-gap: 3px;
+      grid-gap: 0;
 
       .main-grid {
         &__empty-cell {
           background-color: $cell-color;
+          border: 1px solid $grey-400;
         }
 
         &__column-letter {
@@ -517,6 +528,7 @@ export default {
             justify-content: center;
             align-items: center;
             background-color: $cell-color;
+            border: 1px solid $grey-400;
           }
         }
 
@@ -528,6 +540,7 @@ export default {
             align-items: center;
             justify-content: center;
             background-color: $cell-color;
+            border: 1px solid $grey-400;
           }
         }
 
@@ -555,10 +568,5 @@ export default {
   }
 }
 
-.wrapper-of {
-  border: 2px red solid;
-  width: 200px;
-  z-index: 10;
-}
 
 </style>
