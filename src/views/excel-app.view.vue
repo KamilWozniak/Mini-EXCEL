@@ -502,7 +502,7 @@ export default {
   justify-content: center;
 
   .excel-container {
-    width: 100rem;
+    width: 97rem;
     height: auto;
     background-color: $grey-300;
 
